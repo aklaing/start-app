@@ -2,7 +2,7 @@ module StartApp where
 {-| This module makes it super simple to get started making a typical web-app.
 It is designed to work perfectly with [the Elm Architecture][arch] which
 describes a simple architecture pattern that makes testing and refactoring
-shockingly pleasant. Definititely read [the tutorial][arch] to get started!
+shockingly pleasant. Definitely read [the tutorial][arch] to get started!
 
 [arch]: https://github.com/evancz/elm-architecture-tutorial/
 
@@ -18,8 +18,7 @@ import Html exposing (Html)
 import Signal exposing (Address)
 
 
-{-| An app has three key components:
-
+{-| An app has four key components:
   * `model` &mdash; a big chunk of data fully describing your application.
 
   * `view` &mdash; a way to show your model on screen. It takes in two
@@ -31,6 +30,11 @@ import Signal exposing (Address)
   * `update` &mdash; a function to update your model. Whenever a UI event
     occurs, is routed through the `Address` to this update function. We take
     in the message and the current model, then we give back a new model!
+
+  * `feeds` &mdash; a List of signals of actions which are not generated manually
+    by our code but are generated automatically, for example Mouse.position.
+    The signals in this list are merged into the update stream and fed into the
+    update function to update the model, and indirectly, the view.
 
 [The Elm Architecture][arch] augments this basic pattern to give you all the
 modularity you want. But since we have whole model in one place, it is
@@ -44,6 +48,7 @@ type alias App model action =
     { model : model
     , view : Address action -> model -> Html
     , update : action -> model -> model
+    , feeds: List (Signal action)
     }
 
 
@@ -56,8 +61,7 @@ programs like this [here](https://github.com/evancz/elm-architecture-tutorial/).
     import StartApp
 
     main =
-      StartApp.start { model = model, view = view, update = update }
-
+      StartApp.start { model = model, view = view, update = update, feeds = [] }
     model = 0
 
     view address model =
@@ -78,6 +82,50 @@ Notice that the program cleanly breaks up into model, update, and view.
 This means it is super easy to test your update logic independent of any
 rendering.
 -}
+
+{-
+Here is another example of how to use the feeds feature to blend
+automatic Signals such as Mouse.position, with your own.
+
+    import Html exposing (..)
+    import Html.Attributes exposing (style)
+    import StartApp
+    import Mouse
+    
+    main =
+      ModStartApp.start
+        { model = (0,0)
+        , update = update
+        , view = view
+        , feeds = [ Signal.map MousePos Mouse.position ]
+        }
+    
+    type alias Model = (Int, Int)
+    
+    type Action = MousePos (Int, Int)
+    
+    update : Action -> Model -> Model
+    update action model =
+      case action of
+        MousePos (x, y) -> (x, y)
+    
+    view : Signal.Address Action -> Model -> Html
+    view address model =
+      div []
+        [ div [ countStyle ] [ text (toString model) ]
+        ]
+    
+    countStyle : Attribute
+    countStyle =
+      style
+        [ ("font-size", "20px")
+        , ("font-family", "monospace")
+        , ("display", "inline-block")
+        , ("width", "50px")
+        , ("text-align", "center")
+        ]
+-}
+
 start : App model action -> Signal Html
 start app =
   let
@@ -91,6 +139,6 @@ start app =
       Signal.foldp
         (\(Just action) model -> app.update action model)
         app.model
-        actions.signal
+        (Signal.mergeMany (actions.signal :: (List.map (Signal.map Just) app.feeds)))
   in
     Signal.map (app.view address) model
